@@ -107,7 +107,7 @@ h2{font-size:24px;margin:10px 0}
       <button class="big" id="shelfBtn">📖 My Desserts</button>
       <button class="ghost" id="musMenu">🎵 Music on</button>
       <button class="ghost" id="sndMenu">🔊 Sound on</button>
-      <p class="ver">Version: Oct 14, 2026, v14</p>
+      <p class="ver">Version: Oct 14, 2026, v15</p>
     </div>
   </div>
 </div>
@@ -282,7 +282,7 @@ tapBtn($('seeShelfBtn'),openShelf);
 $('shelfBtn').addEventListener('click',openShelf);
 $('shBack').addEventListener('click',goMenu);
 let magic=store.get('magic',true);if(typeof magic!=='boolean')magic=true;
-function setMagic(on){magic=on;store.set('magic',on);$('magicBtn').textContent=on?'✨ Magic shapes: on':'Magic shapes: off'}
+function setMagic(on){magic=on;store.set('magic',on);$('magicBtn').textContent=on?'✨ Magic shapes: on':'Magic shapes: off';if(S.stage==='decorate')$('hint').textContent=on?'✨ Magic is on! Circles, swirls, waves and pyramids turn perfect, and other lines get smoother.':'Magic is off. Your lines stay just how you draw them.'}
 setMagic(magic);tapBtn($('magicBtn'),()=>{setMagic(!magic);SND.tap()});
 
 // ---- My Desserts (saved only in this browser) ----
@@ -353,6 +353,7 @@ cv.addEventListener('pointerdown',e=>{if(S.stage!=='decorate')return;e.preventDe
   const T=TOOLS[S.tool];if(T.tp===null)return;
   if(T.tp===0){addSprinkles(p);tone(1800,.04,'triangle',.05);return}
   if(T.tp>0){if(S.tops.length<600)S.tops.push({t:T.tp,x:p.x,y:p.y,r:(Math.random()-.5)*.6,c:R(0,5)});tone(500+T.tp*60,.12,'sine',.12,0,900+T.tp*80);return}
+  if(S.cur)finishStroke();
   if(S.pts<MAXPTS){S.cur=[p];S.cur.c=S.color;S.strokes.push(S.cur);S.pts++}SND.squish()});
 cv.addEventListener('pointermove',e=>{if(S.stage!=='decorate')return;const p=toScene(e);S.pointer=p;
   if(S.spr&&Math.hypot(p.x-S.spr.x,p.y-S.spr.y)>9){addSprinkles(p);if(Math.random()<.4)tone(1600+R(0,600),.03,'triangle',.04)}
@@ -407,16 +408,18 @@ function wave(raw){let P=raw;if(P.length>400){const q=Math.ceil(P.length/400);P=
   const L=lsq(U.map(u=>[1,u]),V);if(!L)return null;const Wv=V.map((v,i)=>v-L[0]-L[1]*U[i]);
   let rms=0;for(const v of Wv)rms+=v*v;rms=Math.sqrt(rms/n);if(rms<4)return null;
   const cross=[];let st=0;for(let i=0;i<n;i++){const g=Wv[i]>rms*.4?1:Wv[i]<-rms*.4?-1:0;if(g&&g!==st){if(st)cross.push(U[i]);st=g}}
-  if(cross.length<3)return null;const half=Math.abs(cross[cross.length-1]-cross[0])/(cross.length-1);if(half<8)return null;
+  if(cross.length<4)return null;{const gp=[];for(let i=1;i<cross.length;i++)gp.push(Math.abs(cross[i]-cross[i-1]));const mg=gp.reduce((a,b)=>a+b,0)/gp.length;let vr=0;for(const g of gp)vr+=(g-mg)**2;if(Math.sqrt(vr/gp.length)/mg>.4)return null}const half=Math.abs(cross[cross.length-1]-cross[0])/(cross.length-1);if(half<8)return null;
   let best=null;for(let f=.7;f<=1.31;f+=.05){const w=Math.PI/(half*f),M=U.map(u=>[1,u,Math.sin(w*u),Math.cos(w*u)]),c=lsq(M,V);if(!c)continue;
     let e=0;for(let i=0;i<n;i++)e+=(dot(c,M[i])-V[i])**2;e=Math.sqrt(e/n);if(!best||e<best.e)best={e,c,w}}
-  if(!best)return null;const amp=Math.hypot(best.c[2],best.c[3]);if(amp<5||best.e/amp>.45)return null;
+  if(!best)return null;const amp=Math.hypot(best.c[2],best.c[3]);if(amp<7||best.e/amp>.4)return null;
   const{c,w}=best,u0=U[0],u1=U[n-1],m=Math.ceil(Math.abs(u1-u0)/1.5),out=[];
   for(let i=0;i<=m;i++){const u=u0+(u1-u0)*i/m,v=c[0]+c[1]*u+c[2]*Math.sin(w*u)+c[3]*Math.cos(w*u);out.push({x:mx+u*ca-v*sa,y:my+u*sa+v*ca})}
   return{pts:out,name:'wave'}}
+function smoothLine(t){if(t.length<6)return t;const r=[t[0]];let carry=0;for(let i=1;i<t.length;i++){let a=t[i-1],b=t[i],d=Math.hypot(b.x-a.x,b.y-a.y);while(carry+d>=3){const u=(3-carry)/d;a={x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u};r.push(a);d=Math.hypot(b.x-a.x,b.y-a.y);carry=0}carry+=d}
+  r.push(t[t.length-1]);if(r.length<7)return t;let o=r;for(let pass=0;pass<3;pass++){const n=[o[0]];for(let i=1;i<o.length-1;i++){let x=0,y=0,c=0;for(let j=-3;j<=3;j++){const q=o[Math.max(0,Math.min(o.length-1,i+j))];x+=q.x;y+=q.y;c++}n.push({x:x/c,y:y/c})}n.push(o[o.length-1]);o=n}return o}
 function finishStroke(){const t=S.cur;S.cur=null;if(!t||!magic)return;const i=S.strokes.indexOf(t);if(i<0)return;const q=perfect(t)||wave(t);
-  if(q){S.strokes[i]=q.pts;S.pts+=q.pts.length-t.length;SND.sparkle();$('hint').textContent='✨ Magic made a perfect '+q.name+'!'}else S.strokes[i]=smooth(t);S.strokes[i].c=t.c}
-function lift(e){finishStroke();S.spr=null;if(e.pointerType!=='mouse')S.pointer=null}
+  if(q){S.strokes[i]=q.pts;S.pts+=q.pts.length-t.length;SND.sparkle();$('hint').textContent='✨ Magic made a perfect '+q.name+'!'}else{const sm=smoothLine(t);S.pts+=sm.length-t.length;S.strokes[i]=sm;if(t.length>=6)$('hint').textContent='✨ Magic smoothed your line.'}S.strokes[i].c=t.c}
+function lift(e){finishStroke();S.spr=null}
 cv.addEventListener('pointerup',lift);cv.addEventListener('pointercancel',lift);cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'){finishStroke();S.pointer=null}});
 
 function mix(a,b,t){return'rgb('+a.map((v,i)=>Math.round(v+(b[i]-v)*t)).join(',')+')'}
